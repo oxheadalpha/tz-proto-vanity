@@ -49,14 +49,32 @@ fn main() {
             let mut hasher = Blake2b256::new();
             hasher.update(up_to_vanity);
             let mut count = 0u64;
-            let now = Instant::now();
+            let mut vanity_count = 0u64;
+            let t0 = Instant::now();
+            let mut start_time = Instant::now();
+            let mut total_nonce_time = 0;
+            let mut total_hash_time = 0;
             loop {
+                let nonce_time = Instant::now();
                 let nonce = mk_nonce();
+                total_nonce_time += nonce_time.elapsed().as_nanos();
+                let hash_time = Instant::now();
                 let hash = get_hash(&nonce, hasher.clone());
+                total_hash_time += hash_time.elapsed().as_nanos();
                 count += 1;
                 if hash.starts_with(vanity) {
-                    let elapsed = now.elapsed().as_secs();
-                    println!("hash: {hash}\n{nonce}elapsed: {elapsed}s\nattempt: {count}");
+                    vanity_count += 1;
+                    let elapsed = start_time.elapsed().as_secs();
+                    let elapsed_total = t0.elapsed().as_secs();
+                    let total_rate = 60 * vanity_count / elapsed_total;
+                    print!("hash: {hash}\n{nonce}");
+                    println!("elapsed: {elapsed}s\nattempt: {count}\ntotal: {vanity_count} ({total_rate} per minute)");
+                    println!("n time: {total_nonce_time}");
+                    println!("h time: {total_hash_time}");
+
+                    start_time = Instant::now();
+                    total_hash_time = 0;
+                    total_nonce_time = 0;
                 }
             }
         }
