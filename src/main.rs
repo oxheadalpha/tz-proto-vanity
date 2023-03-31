@@ -38,7 +38,7 @@ struct Vanity {
     nonce: String,
     attempts: u64,
     seconds_since_last: u64,
-    vanity_per_minute: u64,
+    vanity_rate: (f32, &'static str),
     count: u64,
     thread_id: u16,
 }
@@ -49,7 +49,7 @@ fn print(v: Vanity) {
         nonce,
         attempts,
         seconds_since_last,
-        vanity_per_minute,
+        vanity_rate: (rate, rate_unit),
         count,
         thread_id,
     } = v;
@@ -57,7 +57,7 @@ fn print(v: Vanity) {
     print!("{thread_id: >2}│ {nonce}");
     println!("  │ └> {hash}");
     println!("  │ found in: {seconds_since_last}s in {attempts} attempts");
-    println!("  │ found so far: {count} ({vanity_per_minute}/minute)");
+    println!("  │ found so far: {count} ({rate:.2}/{rate_unit})");
 }
 
 fn search_forever(
@@ -80,18 +80,13 @@ fn search_forever(
             vanity_count += 1;
             let elapsed = start_time.elapsed().as_secs();
             let elapsed_total = t0.elapsed().as_secs();
-            let total_rate = if elapsed_total > 0 {
-                60 * vanity_count / elapsed_total
-            } else {
-                0
-            };
-
+            let total_rate = calc_rate(vanity_count, elapsed_total);
             let result = Vanity {
                 hash,
                 nonce,
                 attempts: count,
                 seconds_since_last: elapsed,
-                vanity_per_minute: total_rate,
+                vanity_rate: total_rate,
                 count: vanity_count,
                 thread_id,
             };
@@ -123,6 +118,19 @@ fn capitalization_permutations(s: &str) -> Vec<String> {
             }
         }
         result
+    }
+}
+
+fn calc_rate(count: u64, seconds: u64) -> (f32, &'static str) {
+    let total_rate = if seconds > 0 {
+        60. * count as f32 / seconds as f32
+    } else {
+        0.
+    };
+    if total_rate >= 1. {
+        (total_rate, "minute")
+    } else {
+        (60. * total_rate, "hour")
     }
 }
 
@@ -212,13 +220,10 @@ fn main() {
                 print(received);
                 let elapsed = start_time.elapsed().as_secs();
                 let elapsed_total = t0.elapsed().as_secs();
-                let total_rate = if elapsed_total > 0 {
-                    60 * vanity_count / elapsed_total
-                } else {
-                    0
-                };
+
+                let (total_rate, rate_unit) = calc_rate(vanity_count, elapsed_total);
                 println!("  │ elapsed: {elapsed}s/{elapsed_total}s");
-                println!("  │ total found: {vanity_count} ({total_rate}/minute)");
+                println!("  │ total found: {vanity_count} ({total_rate:.2}/{rate_unit})");
                 println!("  └────────────────────────────────────────────");
             }
         }
