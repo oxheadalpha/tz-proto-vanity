@@ -1,6 +1,7 @@
 use blake2::{digest::generic_array::sequence::Lengthen, Blake2b, Digest};
 use clap::{command, value_parser, Arg, ArgAction};
 use num_bigint::{BigUint, RandBigInt, ToBigUint};
+use num_format::{SystemLocale, ToFormattedString};
 use rand::rngs::ThreadRng;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
@@ -53,10 +54,12 @@ fn print(v: Vanity) {
         count,
         thread_id,
     } = v;
+    let locale = SystemLocale::default().unwrap();
+    let fmt_attempts = attempts.to_formatted_string(&locale);
     println!("  ┌────────────────────────────────────────────");
     print!("{thread_id: >2}│ {nonce}");
     println!("  │ └> {hash}");
-    println!("  │ found in: {seconds_since_last}s in {attempts} attempts");
+    println!("  │     found in: {seconds_since_last}s ({fmt_attempts} attempts)");
     println!("  │ found so far: {count} ({rate:.2}/{rate_unit})");
 }
 
@@ -222,8 +225,8 @@ fn main() {
                 let elapsed_total = t0.elapsed().as_secs();
 
                 let (total_rate, rate_unit) = calc_rate(vanity_count, elapsed_total);
-                println!("  │ elapsed: {elapsed}s/{elapsed_total}s");
-                println!("  │ total found: {vanity_count} ({total_rate:.2}/{rate_unit})");
+                println!("  │      elapsed: {elapsed}s/{elapsed_total}s");
+                println!("  │  total found: {vanity_count} ({total_rate:.2}/{rate_unit})");
                 println!("  └────────────────────────────────────────────");
             }
         }
