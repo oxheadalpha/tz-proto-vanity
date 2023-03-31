@@ -100,9 +100,14 @@ fn main() {
     let file_path = &args[1];
     let vanity = &args[2];
 
-    let thread_count = thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::try_from(1).unwrap())
-        .into();
+    let thread_count = if args.len() == 4 {
+        str::parse(&args[3]).unwrap()
+    } else {
+        let available_threads =
+            thread::available_parallelism().unwrap_or(NonZeroUsize::try_from(1).unwrap());
+        let available_threads: usize = available_threads.into();
+        available_threads
+    };
 
     println!("Looking for vanity hash {vanity} for {file_path} using {thread_count} threads");
 
