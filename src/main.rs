@@ -3,7 +3,7 @@ use num_bigint::{BigUint, RandBigInt, ToBigUint};
 use rand::rngs::ThreadRng;
 //use rand::Rng;
 use std::sync::mpsc;
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::Instant;
 use std::{env, fs};
 
@@ -47,6 +47,7 @@ struct Vanity {
     seconds_total: u64,
     vanity_per_minute: u64,
     count: u64,
+    thread_id: i32,
 }
 
 fn print(v: Vanity) {
@@ -59,14 +60,19 @@ fn print(v: Vanity) {
             seconds_total,
             vanity_per_minute,
             count,
+            thread_id,
         } => {
-            print!("hash: {hash}\n{nonce}");
-            println!("elapsed since last/total: {seconds_since_last}s/{seconds_total}s \nattempts: {attempts}\ntotal: {count} ({vanity_per_minute} per minute)");
+            print!("{thread_id}| hash: {hash}\n{thread_id}|{nonce}");
+            println!(
+                "{thread_id}|elapsed since last/total: {seconds_since_last}s/{seconds_total}s"
+            );
+            println!("{thread_id}|attempts: {attempts}");
+            println!("{thread_id}|total: {count} ({vanity_per_minute} per minute)");
         }
     }
 }
 
-fn search_forever(vanity: &String, hasher: &Blake2b256) {
+fn search_forever(thread_id: i32, vanity: String, hasher: Blake2b256) {
     let mut count = 0u64;
     let mut vanity_count = 0u64;
     let t0 = Instant::now();
@@ -82,7 +88,7 @@ fn search_forever(vanity: &String, hasher: &Blake2b256) {
         let hash = get_hash(&nonce, hasher.clone());
         total_hash_time += hash_time.elapsed().as_nanos();
         count += 1;
-        if hash.starts_with(vanity) {
+        if hash.starts_with(&vanity) {
             vanity_count += 1;
             let elapsed = start_time.elapsed().as_secs();
             let elapsed_total = t0.elapsed().as_secs();
@@ -100,6 +106,7 @@ fn search_forever(vanity: &String, hasher: &Blake2b256) {
                 seconds_total: elapsed_total,
                 vanity_per_minute: total_rate,
                 count: vanity_count,
+                thread_id,
             };
 
             print(result);
@@ -135,7 +142,15 @@ fn main() {
             //dbg!(str::from_utf8(up_to_vanity).unwrap());
             let mut hasher = Blake2b256::new();
             hasher.update(up_to_vanity);
-            search_forever(vanity, &hasher);
+            let thread_count = 4;
+            for i in 1..=thread_count {
+                let vanity_copy = vanity.clone();
+                let hasher_copy = hasher.clone();
+                let handler = thread::spawn(move || search_forever(i, vanity_copy, hasher_copy));
+                if i == thread_count {
+                    handler.join().unwrap();
+                }
+            }
         }
         None => println!("Vanity comment line start '{vanity_comment_start}' is not found "),
     }
