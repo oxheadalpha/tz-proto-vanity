@@ -94,6 +94,29 @@ fn search_forever(thread_id: usize, tx: Sender<Vanity>, vanity: String, hasher: 
     }
 }
 
+fn capitalization_permutations(s: &str) -> Vec<String> {
+    if s.is_empty() {
+        vec![String::new()]
+    } else {
+        let first = &s[0..1];
+        let rest = &s[1..];
+        let mut result = vec![];
+        for p in capitalization_permutations(rest) {
+            let mut upper = String::new();
+            upper.push_str(&first.to_uppercase());
+            upper.push_str(&p);
+            result.push(upper);
+            if first.to_uppercase() != first.to_lowercase() {
+                let mut lower = String::new();
+                lower.push_str(&first.to_lowercase());
+                lower.push_str(&p);
+                result.push(lower);
+            }
+        }
+        result
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
 
@@ -153,5 +176,29 @@ fn main() {
             }
         }
         None => println!("Vanity comment line start '{vanity_comment_start}' is not found "),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_capitalization_permutations() {
+        let mut actual = capitalization_permutations("abc");
+        let mut expected = vec!["ABC", "aBC", "AbC", "abC", "ABc", "aBc", "Abc", "abc"];
+        actual.sort();
+        expected.sort();
+        assert_eq!(actual, expected);
+
+        let actual = capitalization_permutations("");
+        let expected = vec![""];
+        assert_eq!(actual, expected);
+
+        let mut actual = capitalization_permutations("X*Y");
+        let mut expected = vec!["X*Y", "x*Y", "X*y", "x*y"];
+        actual.sort();
+        expected.sort();
+        assert_eq!(actual, expected);
     }
 }
