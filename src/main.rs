@@ -1,9 +1,10 @@
 use blake2::{digest::generic_array::sequence::Lengthen, Blake2b, Digest};
+use clap::{command, value_parser, Arg, ArgAction};
 use num_bigint::{BigUint, RandBigInt, ToBigUint};
 use rand::rngs::ThreadRng;
 use std::collections::HashSet;
 use std::num::NonZeroUsize;
-use std::str::FromStr;
+use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Instant;
@@ -39,7 +40,7 @@ struct Vanity {
     seconds_since_last: u64,
     vanity_per_minute: u64,
     count: u64,
-    thread_id: usize,
+    thread_id: u16,
 }
 
 fn print(v: Vanity) {
@@ -60,7 +61,7 @@ fn print(v: Vanity) {
 }
 
 fn search_forever(
-    thread_id: usize,
+    thread_id: u16,
     tx: Sender<Vanity>,
     vanity_set: HashSet<String>,
     hasher: Blake2b256,
@@ -126,37 +127,60 @@ fn capitalization_permutations(s: &str) -> Vec<String> {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
+    let matches = command!() // requires `cargo` feature
+        .arg(Arg::new("proto_file")
+             .required(true)
+             .help("Path to Tezos protocol source file.")
+             .value_parser(value_parser!(PathBuf)))
+        .arg(Arg::new("vanity_string")
+             .required(true)
+             .help("Look for protocol hashes starting with this string (ignoring case by default), e.g. PtMumbai"))
+        .arg(
+            Arg::new("exact")
+                .short('e')
+                .long("exact")
+                .help("match vanity string exactly")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("thread_count")
+                .short('j')
+                .long("thread-count")
+                .help("number of threads to use (default: determine automatically based on the number of available cores/CPUs)")
+                .value_parser(value_parser!(u16).range(1..)),
+        )
+        .get_matches();
 
-    let file_path = &args[1];
-    let exact_or_caseignore = &args[2];
-    let vanity = &args[3];
+    let file_path = matches.get_one::<PathBuf>("proto_file").unwrap();
+
+    let vanity = matches.get_one::<String>("vanity_string").unwrap();
+
+    let exact = matches.get_flag("exact");
 
     let mut vanity_set = HashSet::<String>::new();
 
-    if exact_or_caseignore == "exact" {
+    if exact {
         vanity_set.insert(vanity.to_string());
-    } else if exact_or_caseignore == "caseignore" {
+    } else {
         for permutation in capitalization_permutations(&vanity[2..]) {
             let mut vanity_item = String::new();
             vanity_item.push_str(&vanity[..2]);
             vanity_item.push_str(&permutation[..]);
             vanity_set.insert(vanity_item);
         }
-    } else {
-        panic!("arg before vanity string must be 'exact' or 'caseignore'");
     }
 
-    let thread_count = if args.len() == 5 {
-        str::parse(&args[4]).unwrap()
+    let thread_count = if let Some(thread_count) = matches.get_one::<u16>("thread_count") {
+        *thread_count
     } else {
         let available_threads =
             thread::available_parallelism().unwrap_or(NonZeroUsize::try_from(1).unwrap());
         let available_threads: usize = available_threads.into();
-        available_threads
+        u16::try_from(available_threads).unwrap()
     };
 
-    println!("Looking for vanity hash {vanity} for {file_path} using {thread_count} threads and vanity set {:?}", vanity_set);
+    let file_path_str = file_path.to_str().unwrap();
+    println!("Looking for vanity hash {vanity} for {file_path_str} using {thread_count} threads and vanity set {:?}", vanity_set);
 
     let data_as_bytes = fs::read(file_path).expect("Unable to read file");
     let data = String::from_utf8(data_as_bytes.clone()).expect("Unable to decode as UTF-8 text");
