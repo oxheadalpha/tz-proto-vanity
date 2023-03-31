@@ -1,7 +1,9 @@
 use blake2::{digest::generic_array::sequence::Lengthen, Blake2b, Digest};
 use num_bigint::{BigUint, RandBigInt, ToBigUint};
 use rand::rngs::ThreadRng;
+use std::collections::HashSet;
 use std::num::NonZeroUsize;
+use std::str::FromStr;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Instant;
@@ -57,7 +59,13 @@ fn print(v: Vanity) {
     println!("  │ found so far: {count} ({vanity_per_minute}/minute)");
 }
 
-fn search_forever(thread_id: usize, tx: Sender<Vanity>, vanity: String, hasher: Blake2b256) {
+fn search_forever(
+    thread_id: usize,
+    tx: Sender<Vanity>,
+    vanity_set: HashSet<String>,
+    hasher: Blake2b256,
+) {
+    let vanity_lenth = vanity_set.iter().next().unwrap().len();
     let mut count = 0u64;
     let mut vanity_count = 0u64;
     let t0 = Instant::now();
@@ -67,7 +75,7 @@ fn search_forever(thread_id: usize, tx: Sender<Vanity>, vanity: String, hasher: 
         let nonce = mk_nonce(mk_nonce_digits(&mut rng));
         let hash = get_hash(&nonce, hasher.clone());
         count += 1;
-        if hash.starts_with(&vanity) {
+        if vanity_set.contains(&hash[..vanity_lenth].to_string()) {
             vanity_count += 1;
             let elapsed = start_time.elapsed().as_secs();
             let elapsed_total = t0.elapsed().as_secs();
@@ -121,10 +129,26 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     let file_path = &args[1];
-    let vanity = &args[2];
+    let exact_or_caseignore = &args[2];
+    let vanity = &args[3];
 
-    let thread_count = if args.len() == 4 {
-        str::parse(&args[3]).unwrap()
+    let mut vanity_set = HashSet::<String>::new();
+
+    if exact_or_caseignore == "exact" {
+        vanity_set.insert(vanity.to_string());
+    } else if exact_or_caseignore == "caseignore" {
+        for permutation in capitalization_permutations(&vanity[2..]) {
+            let mut vanity_item = String::new();
+            vanity_item.push_str(&vanity[..2]);
+            vanity_item.push_str(&permutation[..]);
+            vanity_set.insert(vanity_item);
+        }
+    } else {
+        panic!("arg before vanity string must be 'exact' or 'caseignore'");
+    }
+
+    let thread_count = if args.len() == 5 {
+        str::parse(&args[4]).unwrap()
     } else {
         let available_threads =
             thread::available_parallelism().unwrap_or(NonZeroUsize::try_from(1).unwrap());
@@ -132,7 +156,7 @@ fn main() {
         available_threads
     };
 
-    println!("Looking for vanity hash {vanity} for {file_path} using {thread_count} threads");
+    println!("Looking for vanity hash {vanity} for {file_path} using {thread_count} threads and vanity set {:?}", vanity_set);
 
     let data_as_bytes = fs::read(file_path).expect("Unable to read file");
     let data = String::from_utf8(data_as_bytes.clone()).expect("Unable to decode as UTF-8 text");
@@ -143,17 +167,16 @@ fn main() {
         Some(vanity_start) => {
             //First 4 bytes are truncated (not used in proto hashing)
             let up_to_vanity = &data_as_bytes[4..vanity_start];
-            //dbg!(str::from_utf8(up_to_vanity).unwrap());
             let mut hasher = Blake2b256::new();
             hasher.update(up_to_vanity);
 
             let (tx, rx) = mpsc::channel::<Vanity>();
 
             for i in 1..=thread_count {
-                let vanity_copy = vanity.clone();
+                let vanity_set_copy = vanity_set.clone();
                 let hasher_copy = hasher.clone();
                 let sender_copy = tx.clone();
-                thread::spawn(move || search_forever(i, sender_copy, vanity_copy, hasher_copy));
+                thread::spawn(move || search_forever(i, sender_copy, vanity_set_copy, hasher_copy));
             }
 
             let t0 = Instant::now();
