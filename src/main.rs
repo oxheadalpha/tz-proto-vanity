@@ -2,6 +2,7 @@ use blake2::{digest::generic_array::sequence::Lengthen, Blake2b, Digest};
 use num_bigint::{BigUint, RandBigInt, ToBigUint};
 use rand::rngs::ThreadRng;
 //use rand::Rng;
+use std::sync::mpsc;
 use std::thread;
 use std::time::Instant;
 use std::{env, fs};
@@ -25,7 +26,7 @@ const NUM_NONCE_DIGITS_USIZE: usize = NUM_NONCE_DIGITS as usize;
 fn mk_nonce_digits(rng: &mut ThreadRng) -> String {
     let unsigned: BigUint =
         rng.gen_biguint_range(&0.to_biguint().unwrap(), &MAX_NONCE.to_biguint().unwrap());
-    format!("~~~ {0:0NUM_NONCE_DIGITS_USIZE$}", unsigned)
+    format!("{0:0NUM_NONCE_DIGITS_USIZE$}", unsigned)
 }
 
 fn mk_nonce(nonce_digits: String) -> String {
@@ -36,6 +37,82 @@ fn get_hash(vanity_nonce: &str, mut proto_hash: Blake2b256) -> String {
     proto_hash.update(vanity_nonce.as_bytes());
     let raw_hash = proto_hash.finalize().prepend(0xaa).prepend(0x02);
     bs58::encode(raw_hash).with_check().into_string()
+}
+
+struct Vanity {
+    hash: String,
+    nonce: String,
+    attempts: u64,
+    seconds_since_last: u64,
+    seconds_total: u64,
+    vanity_per_minute: u64,
+    count: u64,
+}
+
+fn print(v: Vanity) {
+    match v {
+        Vanity {
+            hash,
+            nonce,
+            attempts,
+            seconds_since_last,
+            seconds_total,
+            vanity_per_minute,
+            count,
+        } => {
+            print!("hash: {hash}\n{nonce}");
+            println!("elapsed since last/total: {seconds_since_last}s/{seconds_total}s \nattempts: {attempts}\ntotal: {count} ({vanity_per_minute} per minute)");
+        }
+    }
+}
+
+fn search_forever(vanity: &String, hasher: &Blake2b256) {
+    let mut count = 0u64;
+    let mut vanity_count = 0u64;
+    let t0 = Instant::now();
+    let mut start_time = Instant::now();
+    let mut total_nonce_time = 0;
+    let mut total_hash_time = 0;
+    let mut rng = rand::thread_rng();
+    loop {
+        let nonce_time = Instant::now();
+        let nonce = mk_nonce(mk_nonce_digits(&mut rng));
+        total_nonce_time += nonce_time.elapsed().as_nanos();
+        let hash_time = Instant::now();
+        let hash = get_hash(&nonce, hasher.clone());
+        total_hash_time += hash_time.elapsed().as_nanos();
+        count += 1;
+        if hash.starts_with(vanity) {
+            vanity_count += 1;
+            let elapsed = start_time.elapsed().as_secs();
+            let elapsed_total = t0.elapsed().as_secs();
+            let total_rate = if elapsed_total > 0 {
+                60 * vanity_count / elapsed_total
+            } else {
+                0
+            };
+
+            let result = Vanity {
+                hash,
+                nonce,
+                attempts: count,
+                seconds_since_last: elapsed,
+                seconds_total: elapsed_total,
+                vanity_per_minute: total_rate,
+                count: vanity_count,
+            };
+
+            print(result);
+
+            println!("n time: {total_nonce_time}");
+            println!("h time: {total_hash_time}");
+
+            start_time = Instant::now();
+            total_hash_time = 0;
+            total_nonce_time = 0;
+            count = 0
+        }
+    }
 }
 
 fn main() {
@@ -58,40 +135,7 @@ fn main() {
             //dbg!(str::from_utf8(up_to_vanity).unwrap());
             let mut hasher = Blake2b256::new();
             hasher.update(up_to_vanity);
-            let mut count = 0u64;
-            let mut vanity_count = 0u64;
-            let t0 = Instant::now();
-            let mut start_time = Instant::now();
-            let mut total_nonce_time = 0;
-            let mut total_hash_time = 0;
-            let mut rng = rand::thread_rng();
-            loop {
-                let nonce_time = Instant::now();
-                let nonce = mk_nonce(mk_nonce_digits(&mut rng));
-                total_nonce_time += nonce_time.elapsed().as_nanos();
-                let hash_time = Instant::now();
-                let hash = get_hash(&nonce, hasher.clone());
-                total_hash_time += hash_time.elapsed().as_nanos();
-                count += 1;
-                if hash.starts_with(vanity) {
-                    vanity_count += 1;
-                    let elapsed = start_time.elapsed().as_secs();
-                    let elapsed_total = t0.elapsed().as_secs();
-                    let total_rate = if elapsed_total > 0 {
-                        60 * vanity_count / elapsed_total
-                    } else {
-                        0
-                    };
-                    print!("hash: {hash}\n{nonce}");
-                    println!("elapsed since last/total: {elapsed}s/{elapsed_total}s \nattempt: {count}\ntotal: {vanity_count} ({total_rate} per minute)");
-                    println!("n time: {total_nonce_time}");
-                    println!("h time: {total_hash_time}");
-
-                    start_time = Instant::now();
-                    total_hash_time = 0;
-                    total_nonce_time = 0;
-                }
-            }
+            search_forever(vanity, &hasher);
         }
         None => println!("Vanity comment line start '{vanity_comment_start}' is not found "),
     }
