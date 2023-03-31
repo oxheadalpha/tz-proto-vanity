@@ -1,6 +1,7 @@
 use blake2::{digest::generic_array::sequence::Lengthen, Blake2b, Digest};
 use rand::Rng;
-use std::time::{Duration, Instant};
+use std::thread;
+use std::time::Instant;
 use std::{env, fs};
 
 pub type Blake2b256 = Blake2b<blake2::digest::consts::U32>;
@@ -42,7 +43,8 @@ fn main() {
 
     match maybe_vanity_start {
         Some(vanity_start) => {
-            let up_to_vanity = &data_as_bytes[..vanity_start];
+            //First 4 bytes are truncated (not used in proto hashing)
+            let up_to_vanity = &data_as_bytes[4..vanity_start];
             //dbg!(str::from_utf8(up_to_vanity).unwrap());
             let mut hasher = Blake2b256::new();
             hasher.update(up_to_vanity);
