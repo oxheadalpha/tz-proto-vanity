@@ -1,24 +1,34 @@
 use blake2::{digest::generic_array::sequence::Lengthen, Blake2b, Digest};
-use rand::Rng;
+use num_bigint::{BigUint, RandBigInt, ToBigUint};
+use rand::rngs::ThreadRng;
+//use rand::Rng;
 use std::thread;
 use std::time::Instant;
 use std::{env, fs};
 
 pub type Blake2b256 = Blake2b<blake2::digest::consts::U32>;
 
-fn mk_nonce_digits(num_nonce_digits: u8) -> String {
-    let mut nonce = String::from("");
-    for _ in 0..num_nonce_digits {
-        let random_digit = rand::thread_rng().gen_range(0..10).to_string();
-        nonce.push(random_digit.chars().last().expect("no digit?"));
-    }
-    nonce
+// fn mk_nonce_digits(rng: &mut ThreadRng) -> String {
+//     let mut nonce = String::from("");
+//     for _ in 0..NUM_NONCE_DIGITS {
+//         let random_digit = rng.gen_range(0..10).to_string();
+//         nonce.push(random_digit.chars().last().expect("no digit?"));
+//     }
+//     nonce
+// }
+
+const BASE10: u64 = 10;
+const NUM_NONCE_DIGITS: u8 = 16;
+const MAX_NONCE: u64 = BASE10.pow(NUM_NONCE_DIGITS as u32);
+const NUM_NONCE_DIGITS_USIZE: usize = NUM_NONCE_DIGITS as usize;
+
+fn mk_nonce_digits(rng: &mut ThreadRng) -> String {
+    let unsigned: BigUint =
+        rng.gen_biguint_range(&0.to_biguint().unwrap(), &MAX_NONCE.to_biguint().unwrap());
+    format!("~~~ {0:0NUM_NONCE_DIGITS_USIZE$}", unsigned)
 }
 
-const NUM_NONCE_DIGITS: u8 = 16;
-
-fn mk_nonce() -> String {
-    let nonce_digits = mk_nonce_digits(NUM_NONCE_DIGITS);
+fn mk_nonce(nonce_digits: String) -> String {
     format!("(* Vanity nonce: {nonce_digits} *)\n")
 }
 
@@ -54,9 +64,10 @@ fn main() {
             let mut start_time = Instant::now();
             let mut total_nonce_time = 0;
             let mut total_hash_time = 0;
+            let mut rng = rand::thread_rng();
             loop {
                 let nonce_time = Instant::now();
-                let nonce = mk_nonce();
+                let nonce = mk_nonce(mk_nonce_digits(&mut rng));
                 total_nonce_time += nonce_time.elapsed().as_nanos();
                 let hash_time = Instant::now();
                 let hash = get_hash(&nonce, hasher.clone());
@@ -66,9 +77,13 @@ fn main() {
                     vanity_count += 1;
                     let elapsed = start_time.elapsed().as_secs();
                     let elapsed_total = t0.elapsed().as_secs();
-                    let total_rate = 60 * vanity_count / elapsed_total;
+                    let total_rate = if elapsed_total > 0 {
+                        60 * vanity_count / elapsed_total
+                    } else {
+                        0
+                    };
                     print!("hash: {hash}\n{nonce}");
-                    println!("elapsed: {elapsed}s\nattempt: {count}\ntotal: {vanity_count} ({total_rate} per minute)");
+                    println!("elapsed since last/total: {elapsed}s/{elapsed_total}s \nattempt: {count}\ntotal: {vanity_count} ({total_rate} per minute)");
                     println!("n time: {total_nonce_time}");
                     println!("h time: {total_hash_time}");
 
