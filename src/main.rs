@@ -194,9 +194,19 @@ fn main() {
     println!("Looking for vanity hash {vanity} for {file_path_str} using {thread_count} threads and vanity set {:?}", vanity_set);
 
     let data_as_bytes = fs::read(file_path).expect("Unable to read file");
-    let data = String::from_utf8(data_as_bytes.clone()).expect("Unable to decode as UTF-8 text");
+
     let vanity_comment_start = "(* Vanity nonce:";
-    let maybe_vanity_start = data.rfind(vanity_comment_start);
+    //protocol is a bunch of concatenated source files - mostly text, but with some bytes
+    //in the mix that makes it invalid UTF8. We want to be able to use rfind though, hence
+    //converting it to text in an unsafe way
+    let maybe_vanity_start =
+        unsafe { String::from_utf8_unchecked(data_as_bytes.clone()).rfind(vanity_comment_start) };
+
+    let mut full_proto_hasher = Blake2b256::new();
+    full_proto_hasher.update(&data_as_bytes[4..]);
+    let raw_hash = full_proto_hasher.finalize().prepend(0xaa).prepend(0x02);
+    let current_hash = bs58::encode(raw_hash).with_check().into_string();
+    println!("Current hash: {current_hash}");
 
     match maybe_vanity_start {
         Some(vanity_start) => {
