@@ -13,7 +13,18 @@ cargo build --release
 Run it like so:
 
 ```sh
-tz-proto-vanity ~/dev/tezos/src/proto_016_PtMumbai/lib_protocol/main.ml PtMumb
+# download protocol file from Tezos node
+export TEZOS_NODE=http://localhost:8732
+
+# list known protocols
+curl $TEZOS_NODE/protocols | jq
+
+# choose protocol and download it
+export TEZOS_PROTO=PtLimaPtLMwfNinJi9rCfDPWea8dFgTZ1MeJ9f1m2SRic6ayiwW
+curl -L -H "Accept: application/octet-stream" $TEZOS_NODE/protocols/$TEZOS_PROTO > my.proto
+
+# start vanity hash generator
+tz-proto-vanity my.proto PtMumb
 ```
 
 Usage:
@@ -23,10 +34,10 @@ Usage: tz-proto-vanity [OPTIONS] <proto_file> <vanity_string>
 
 Arguments:
   <proto_file>     Path to Tezos protocol source file.
-  <vanity_string>  Look for protocol hashes starting with this string (ignoring case by default), e.g. PtMumbai
+  <vanity_string>  Look for protocol hashes starting with this string, e.g. PtMumbai
 
 Options:
-  -e, --exact                        match vanity string exactly
+  -i, --ignore-case                  perform case insensitive matching
   -j, --thread-count <thread_count>  number of threads to use (default: determine automatically based on the number of available cores/CPUs)
   -h, --help                         Print help
   -V, --version                      Print version
