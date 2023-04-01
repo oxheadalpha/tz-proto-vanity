@@ -145,12 +145,12 @@ fn main() {
              .value_parser(value_parser!(PathBuf)))
         .arg(Arg::new("vanity_string")
              .required(true)
-             .help("Look for protocol hashes starting with this string (ignoring case by default), e.g. PtMumbai"))
+             .help("Look for protocol hashes starting with this string, e.g. PtMumbai"))
         .arg(
-            Arg::new("exact")
-                .short('e')
-                .long("exact")
-                .help("match vanity string exactly")
+            Arg::new("ignore_case")
+                .short('i')
+                .long("ignore-case")
+                .help("perform case insensitive matching")
                 .action(ArgAction::SetTrue),
         )
         .arg(
@@ -166,19 +166,19 @@ fn main() {
 
     let vanity = matches.get_one::<String>("vanity_string").unwrap();
 
-    let exact = matches.get_flag("exact");
+    let ignore_case = matches.get_flag("ignore_case");
 
     let mut vanity_set = HashSet::<String>::new();
 
-    if exact {
-        vanity_set.insert(vanity.to_string());
-    } else {
+    if ignore_case {
         for permutation in capitalization_permutations(&vanity[2..]) {
             let mut vanity_item = String::new();
             vanity_item.push_str(&vanity[..2]);
             vanity_item.push_str(&permutation[..]);
             vanity_set.insert(vanity_item);
         }
+    } else {
+        vanity_set.insert(vanity.to_string());
     }
 
     let thread_count = if let Some(thread_count) = matches.get_one::<u16>("thread_count") {
