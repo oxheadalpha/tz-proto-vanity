@@ -25,6 +25,7 @@ curl -L -H "Accept: application/octet-stream" $TEZOS_NODE/protocols/$TEZOS_PROTO
 
 # start vanity hash generator
 tz-proto-vanity my.proto PtMumb
+
 ```
 
 Usage:
@@ -37,8 +38,9 @@ Arguments:
   <vanity_string>  Look for protocol hashes starting with this string, e.g. PtMumbai
 
 Options:
-  -i, --ignore-case                  perform case insensitive matching
-  -j, --thread-count <thread_count>  number of threads to use (default: determine automatically based on the number of available cores/CPUs)
-  -h, --help                         Print help
-  -V, --version                      Print version
+  -i, --ignore-case                    perform case insensitive matching
+  -j, --thread-count <thread_count>    number of threads to use (default: determine automatically based on the number of available cores/CPUs)
+  -f, --output-format <output_format>  Output format [default: human] [possible values: human, csv]
+  -h, --help                           Print help
+  -V, --version                        Print version
 ```

@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::mpsc::{self, Sender};
 use std::thread;
 use std::time::Instant;
-use std::{env, fs};
+use std::{env, fs, io};
 
 pub type Blake2b256 = Blake2b<blake2::digest::consts::U32>;
 
@@ -24,7 +24,7 @@ fn mk_nonce_digits(rng: &mut ThreadRng) -> String {
     format!("{0:0NUM_NONCE_DIGITS_USIZE$}", unsigned)
 }
 
-fn mk_nonce(nonce_digits: String) -> String {
+fn mk_nonce(nonce_digits: &String) -> String {
     format!("(* Vanity nonce: {nonce_digits} *)\n")
 }
 
@@ -37,6 +37,7 @@ fn get_hash(vanity_nonce: &str, mut proto_hash: Blake2b256) -> String {
 struct Vanity {
     hash: String,
     nonce: String,
+    nonce_digits: String,
     attempts: u64,
     seconds_since_last: u64,
     vanity_rate: (f32, &'static str),
@@ -48,6 +49,7 @@ fn print(v: Vanity) {
     let Vanity {
         hash,
         nonce,
+        nonce_digits: _,
         attempts,
         seconds_since_last,
         vanity_rate: (rate, rate_unit),
@@ -76,7 +78,8 @@ fn search_forever(
     let mut start_time = Instant::now();
     let mut rng = rand::thread_rng();
     loop {
-        let nonce = mk_nonce(mk_nonce_digits(&mut rng));
+        let nonce_digits = mk_nonce_digits(&mut rng);
+        let nonce = mk_nonce(&nonce_digits);
         let hash = get_hash(&nonce, hasher.clone());
         count += 1;
         if vanity_set.contains(&hash[..vanity_lenth].to_string()) {
@@ -87,6 +90,7 @@ fn search_forever(
             let result = Vanity {
                 hash,
                 nonce,
+                nonce_digits,
                 attempts: count,
                 seconds_since_last: elapsed,
                 vanity_rate: total_rate,
@@ -160,6 +164,14 @@ fn main() {
                 .help("number of threads to use (default: determine automatically based on the number of available cores/CPUs)")
                 .value_parser(value_parser!(u16).range(1..)),
         )
+        .arg(
+            Arg::new("output_format")
+                .short('f')
+                .long("output-format")
+                .help("Output format")
+                .default_value("human")
+                .value_parser(["human", "csv"])
+        )
         .get_matches();
 
     let file_path = matches.get_one::<PathBuf>("proto_file").unwrap();
@@ -167,6 +179,8 @@ fn main() {
     let vanity = matches.get_one::<String>("vanity_string").unwrap();
 
     let ignore_case = matches.get_flag("ignore_case");
+
+    let output_format = matches.get_one::<String>("output_format").unwrap().as_str();
 
     let mut vanity_set = HashSet::<String>::new();
 
@@ -226,18 +240,57 @@ fn main() {
 
             let t0 = Instant::now();
             let mut vanity_count = 0u64;
+
+            if output_format == "csv" {
+                let mut wtr = csv::Writer::from_writer(io::stdout());
+                wtr.write_record([
+                    "hash",
+                    "nonce",
+                    "thread",
+                    "thread_attempts",
+                    "thread_found_in_sec",
+                    "thread_rate",
+                    "thread_rate_unit",
+                    "found_in_sec",
+                    "rate",
+                    "rate_unit",
+                ])
+                .unwrap();
+                wtr.flush().unwrap();
+            }
+
             loop {
                 let start_time = Instant::now();
                 let received = rx.recv().unwrap();
                 vanity_count += 1;
-                print(received);
                 let elapsed = start_time.elapsed().as_secs();
                 let elapsed_total = t0.elapsed().as_secs();
-
                 let (total_rate, rate_unit) = calc_rate(vanity_count, elapsed_total);
-                println!("  │      elapsed: {elapsed}s/{elapsed_total}s");
-                println!("  │  total found: {vanity_count} ({total_rate:.2}/{rate_unit})");
-                println!("  └────────────────────────────────────────────");
+                match output_format {
+                    "csv" => {
+                        let mut wtr = csv::Writer::from_writer(io::stdout());
+                        wtr.write_record(&[
+                            received.hash,
+                            received.nonce_digits,
+                            received.thread_id.to_string(),
+                            received.attempts.to_string(),
+                            received.seconds_since_last.to_string(),
+                            received.vanity_rate.0.to_string(),
+                            received.vanity_rate.1.to_string(),
+                            elapsed.to_string(),
+                            total_rate.to_string(),
+                            rate_unit.to_string(),
+                        ])
+                        .unwrap();
+                        wtr.flush().unwrap();
+                    }
+                    _ => {
+                        print(received);
+                        println!("  │      elapsed: {elapsed}s/{elapsed_total}s");
+                        println!("  │  total found: {vanity_count} ({total_rate:.2}/{rate_unit})");
+                        println!("  └────────────────────────────────────────────");
+                    }
+                }
             }
         }
         None => println!("Vanity comment line start '{vanity_comment_start}' is not found "),
