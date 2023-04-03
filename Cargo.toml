@@ -1,5 +1,6 @@
 [package]
 name = "tz-proto-vanity"
+#this is placeholder value, build.rs sets it to result of "git describe --tags"
 version = "0.1.0"
 edition = "2021"
 
