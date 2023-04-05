@@ -177,6 +177,9 @@ fn main() {
     let file_path = matches.get_one::<PathBuf>("proto_file").unwrap();
 
     let vanity = matches.get_one::<String>("vanity_string").unwrap();
+    bs58::decode(vanity)
+        .into_vec()
+        .expect("Vanity string must be valid base58");
 
     let ignore_case = matches.get_flag("ignore_case");
 
