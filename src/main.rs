@@ -205,7 +205,9 @@ fn main() {
     };
 
     let file_path_str = file_path.to_str().unwrap();
-    println!("Looking for vanity hash {vanity} for {file_path_str} using {thread_count} threads and vanity set {:?}", vanity_set);
+    if output_format == "human" {
+        println!("Looking for vanity hash {vanity} for {file_path_str} using {thread_count} threads and vanity set {:?}", vanity_set);
+    }
 
     let data_as_bytes = fs::read(file_path).expect("Unable to read file");
 
@@ -216,11 +218,13 @@ fn main() {
     let maybe_vanity_start =
         unsafe { String::from_utf8_unchecked(data_as_bytes.clone()).rfind(vanity_comment_start) };
 
-    let mut full_proto_hasher = Blake2b256::new();
-    full_proto_hasher.update(&data_as_bytes[4..]);
-    let raw_hash = full_proto_hasher.finalize().prepend(0xaa).prepend(0x02);
-    let current_hash = bs58::encode(raw_hash).with_check().into_string();
-    println!("Current hash: {current_hash}");
+    if output_format == "human" {
+        let mut full_proto_hasher = Blake2b256::new();
+        full_proto_hasher.update(&data_as_bytes[4..]);
+        let raw_hash = full_proto_hasher.finalize().prepend(0xaa).prepend(0x02);
+        let current_hash = bs58::encode(raw_hash).with_check().into_string();
+        println!("Current hash: {current_hash}");
+    }
 
     match maybe_vanity_start {
         Some(vanity_start) => {
