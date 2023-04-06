@@ -28,6 +28,8 @@ tz-proto-vanity my.proto PtMumb
 
 ```
 
+For more details, see [How to submit a Tezos Protocol Proposal](https://medium.com/the-aleph/how-to-submit-a-tezos-protocol-proposal-1704d3b73b8e).
+
 Usage:
 
 ```
